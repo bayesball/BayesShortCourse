@@ -47,6 +47,23 @@ This webinar series is divided into three parts.
 
 http://bitly.com/ProbBayes 
 
+## Files
+
+All of the webinar files (markdown, pdf, data files) can be found at
+
+https://github.com/bayesball/JSM2020
+
+## Any Questions?
+
+```{r, echo=FALSE, out.width="30%"}
+knitr::include_graphics("question.jpg")
+```
+
+- Can ask questions by use of the Zoom chat window.
+
+- We will try to address all questions during the Webinar or afterwards
+
+
 ## Computation
 
 - Our text focuses on the use of JAGS for simulating from general Bayesian models.
@@ -209,7 +226,7 @@ triplot(c(4.42, 23.51), c(7, 37))
 
 ## 90% Interval Estimate
 
-```{r, echo = FALSE,fig.width = 4, fig.height = 3}
+```{r, echo = FALSE,fig.width = 5, fig.height = 3}
 beta_interval(0.90, c(11.42, 60.51))
 ```
 
@@ -357,15 +374,4 @@ summary(fit_bern)
 - "QUESTION:  What if I use the wrong prior?"
 
 - "QUESTION:  Aren't I introducing errors by simulating from the posterior?"
-
-## Do You Have Any Questions?
-
-```{r, echo=FALSE, out.width="30%"}
-knitr::include_graphics("question.jpg")
-```
-
-
-- Can ask questions by use of the chat window.
-
-- We will try to address all questions during the Webinar or afterwards
 
