@@ -114,11 +114,12 @@ post <- posterior_samples(fit)
 
 ## Posterior Plot
 
-- Function ```mcmc_areas()``` displays a density estimate of the simulated draws and shows the location of a 50% probability interval.
+- Function ```mcmc_areas()``` displays a density estimate of the simulated draws and shows the location of a 90% probability interval.
 
 ```{r, fig.width = 4, fig.height = 2}
 library(bayesplot)
-mcmc_areas(post, pars = "b_Intercept")
+mcmc_areas(post, pars = "b_Intercept",
+           prob = 0.90)
 ```
 
 
