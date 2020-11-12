@@ -23,7 +23,7 @@ knitr::opts_chunk$set(echo = TRUE,
 
 - Can pool the data over the grouping variable.
 
-- Can run separate regressions.
+- Or can run separate regressions.
 
 - Both approaches are unsatisfactory.
 
@@ -209,7 +209,7 @@ fit <- lm(estimated_woba_using_speedangle ~ effect,
 fit$coef
 ```
 
-## Graph
+## Graph pf Pooled Data Estimate
 
 ```{r, echo = FALSE, fig.height = 3, fig.width = 4}
 df <- data.frame(Type = c("Behind", "Neutral"),
@@ -387,6 +387,90 @@ ggplot(data = rbind(Individual_est, B),
 - We see shrinkage both in the slopes and the intercepts, but the degree of shrinkage is smaller for the intercepts (the player wOBA abilities). 
 
 - Another interesting thing to see is that there is a positive correlation between the multilevel intercepts and slopes -- this means that better hitters tend to have larger count effects.
+
+## Fit the Full Bayesian Model
+
+- Prior? (Show the default ones that are used by the brms package.)
+
+- Focus on inference on second-stage standard deviations.
+
+- Short discussion of MCMC diagnostics.
+
+## Bayesian Fit
+
+```
+library(brms)
+bfit <- brm(estimated_woba_using_speedangle ~
+  effect + (1 + effect | player_name),
+        data = sc_regular_2)
+```
+
+- Relatively slow -- 17 minutes for this example
+
+- About 200 players (400+ parameters)
+
+## Prior
+
+```{r, echo=FALSE, out.width="85%"}
+knitr::include_graphics("priors.png")
+```
+
+## Some Basic MCMC Diagnostic Graphs
+
+- Trace plots of each parameter of interest (simulated value against iteration number)
+
+- Autocorrelation plots (autocorrelations against lag number)
+
+- Density estimates 
+
+## Summary MCMC Diagnostics
+
+- Rhat (potential scale reduction statistic): compares behavior of one chain with other randomly initialized chains -- if chains are at equilibrium, Rhat will be close to 1
+
+- ESS (effective sample size): estimate of the number of independent draws from the posterior distribution of the parameter of interest
+
+- Typically ESS is smaller than simulation sample size
+
+
+## Posterior Summaries
+
+```{r, echo=FALSE, out.width="85%"}
+knitr::include_graphics("summary.png")
+```
+
+## Trace and Density Estimates
+
+```
+post <- posterior_samples(bfit)
+library(bayesplot)
+mcmc_combo(post, pars = c("sd_player_name__Intercept",
+                          "sd_player_name__effect"))
+```
+
+## Trace and Density Estimates
+
+```{r, echo=FALSE, out.width="85%"}
+knitr::include_graphics("mcmc_plots.png")
+```
+
+## Autocorrelation Graphs
+
+```
+mcmc_acf(post,  pars = c("sd_player_name__Intercept",
+                        "sd_player_name__effect"))
+```
+
+```{r, echo=FALSE, out.width="85%"}
+knitr::include_graphics("acf.png")
+```
+
+## Takeaways
+
+- See better mixing of $\sigma_0$ than for $\sigma_1$
+
+- This demonstrated through the acf and trace plots, and the values of the ESS
+
+- Would suggest rerunning fit with a large simulation sample size
 
 ## Wrapup
 
