@@ -1,0 +1,382 @@
+---
+title: 'Bayesian Thinking:  Fundamentals, Regression and Multilevel Modeling'
+author: "Jim Albert and Jingchen (Monika) Hu"
+date: "November 2020"
+output:
+  beamer_presentation:
+    theme: AnnArbor
+    colortheme: beaver
+    fonttheme: structurebold
+    includes:
+      in_header: header_pagenrs.tex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                  message = FALSE, 
+                  warning = FALSE)
+
+require(ggplot2)
+require(gridExtra)
+require(ProbBayes)
+require(tidyverse)
+crcblue <- "#2905a1"
+knitr::opts_chunk$set(echo = TRUE)
+def.chunk.hook  <- knitr::knit_hooks$get("chunk")
+knitr::knit_hooks$set(chunk = function(x, options) {
+  x <- def.chunk.hook(x, options)
+  ifelse(options$size != "normalsize", paste0("\\", options$size,"\n\n", x, "\n\n \\normalsize"), x)
+})
+```
+
+## Webinar 3-1: Multilevel Models for Continuous Data 
+
+\tableofcontents[hideallsubsections]
+
+
+# Introduction: observations in groups
+
+## Review: the normal model \& normal regression
+
+- When you have continuous outcomes, you can use a normal model:
+\begin{equation*}
+Y_i \mid \mu, \sigma \overset{i.i.d.}{\sim} \textrm{Normal}(\mu, \sigma), \,\,\, i = 1, \cdots, n.
+\end{equation*}
+
+
+
+- When you have predictor variables available, $\{x_{i1}, \cdots, x_{ip}\}$; you can specify an observation specific mean:
+\begin{equation*}
+Y_i \mid \mu_i, \sigma \overset{ind}{\sim} \textrm{Normal}(\mu_i, \sigma), \,\,\, i = 1, \cdots, n,
+\end{equation*}
+where 
+\begin{equation*}
+\mu_i = \beta_0 + \beta_1 x_{i1} + \beta_2 x_{i2} + \cdots, \beta_p x_{ip}.
+\end{equation*}
+    - Predictors can be continuous, binary, and categorical (interpretation differs).
+    - Observations are assumed independent.
+
+## When observations are not necessarily independent
+
+- Observations can be dependent in several ways.
+
+- Observations are nested in groups:
+    - Students’ test scores from multiple schools;
+    - Ratings of movies of different genres;
+    - Ratings of dramas of different schedules;
+    - Death rates of hospitals.
+    
+- We will focus on a movie rating dataset to explore modeling approaches for dependent data.
+
+## Example: ratings of animation movies
+
+- MovieLens: personalized movie recommendation for users.
+
+- In one study, a sample on movie ratings for 8 animation movies released in 2010, total 55 movies.
+
+- Each rating is for a movie completed by a user; some movies have many ratings while others have few.
+
+- A natural grouping of these 55 ratings: by movie title.
+
+## Example: ratings of animation movies cont'd
+
+```{r fig.height = 3, fig.width = 3, fig.align = "center", size = "footnotesize", echo = FALSE}
+MovieRatings = read.csv("2010_animation_ratings.csv", header = TRUE, sep = ",")
+
+MovieRatings %>%
+  mutate(Title = as.character(title),
+         Title = recode(Title,
+                  "Shrek Forever After (a.k.a. Shrek: The Final Chapter) (2010)" = "Shrek Forever",
+                  "How to Train Your Dragon (2010)" = "Dragon",
+                  "Toy Story 3 (2010)" = "Toy Story 3",
+                  "Tangled (2010)" = "Tangled",
+                  "Despicable Me (2010)" = "Despicable Me",
+                  "Legend of the Guardians: The Owls of Ga'Hoole (2010)" = "Guardians",
+                  "Megamind (2010)" = "Megamind",
+                  "Batman: Under the Red Hood (2010)" = "Batman")) ->
+           MovieRatings
+
+ggplot(MovieRatings, aes(Title, rating)) +
+  geom_jitter(width = 0.2,
+              size = 1, color = crcblue) +
+  coord_flip() +
+  increasefont(8) +
+  ylab("Rating")
+```
+
+
+## Example: ratings of animation movies cont'd
+
+| Movie Title                | Mean |   SD |  N |
+| :------------------------- | ---: | ---: | -: |
+| Batman: Under the Red Hood | 5.00 |      |  1 |
+| Despicable Me              | 3.72 | 0.62 |  9 |
+| How to Train Your Dragon   | 3.41 | 0.86 | 11 |
+| Legend of the Guardians    | 4.00 |      |  1 |
+| Megamind                   | 3.38 | 1.31 |  4 |
+| Shrek Forever After        | 4.00 | 1.32 |  3 |
+| Tangled                    | 4.20 | 0.89 | 10 |
+| Toy Story 3                | 3.81 | 0.96 | 16 |
+
+## Modeling challenges
+
+- Approach 1 - separate estimates for each movie $j$:
+\begin{equation*}
+Y_{1j}, \cdots, Y_{n_j j} \overset{i.i.d.}{\sim} \textrm{Normal}(\mu_j, \sigma_j).
+\end{equation*}
+    - No relation among groups; groups with small sample size might suffer (e.g. $n_j = 1$)
+
+- Approach 2 - combined estimates for all $J$ movies:
+\begin{equation*}
+Y_{ij} \overset{i.i.d.}{\sim} \textrm{Normal}(\mu, \sigma).
+\end{equation*}
+    - Differences in groups are ignored.
+    
+- Something in between - multilevel modeling
+    - Pooling information across groups.
+    - Achieved through a two-stage prior.
+
+# A multilevel model with random $\sigma$
+
+## The sampling model
+
+- Without loss of generality, assume a group-specific normal model for movie $j$:
+\begin{eqnarray}
+Y_{ij} \overset{i.i.d.}{\sim} \textrm{Normal}(\mu_j, \sigma),
+\end{eqnarray}
+where $i = 1, \cdots, n_j$ and $n_j$ is the number of observations in group $j$. 
+
+- Is a commonly shared $\sigma$ reasonable? If not, $\sigma$ can be group-specific.
+
+- Model parameters: $\{\mu_1, \cdots, \mu_J, \sigma\}$.
+
+## A two-stage prior for $\{\mu_1, \cdots, \mu_J\}$: stage 1
+
+- All movies are animation movies, we could assume that the mean ratings are similar across movies
+
+- First stage: the same normal prior distribution for each mean $\mu_j$
+\begin{equation}
+\mu_j \mid \mu, \tau \sim \textrm{Normal}(\mu, \tau).
+\end{equation}
+
+- This prior allows information pooled across movies (groups).
+    - If $\tau$ is large, the $\mu_j$'s are very different a priori $\rightarrow$ modest pooling in parameter estimation.
+    - If $\tau$ is small, the $\mu_j$'s are very similar a priori $\rightarrow$ large pooling in parameter estimation.
+
+- $\mu$ and $\tau$: hyperparameters, and treated random.
+
+## A two-stage prior for $\{\mu_1, \cdots, \mu_J\}$: stage 2
+
+- Second stage: weakly informative hyperpriors for hyperparameters
+\begin{eqnarray}
+\mu &\sim& \textrm{Normal}(3, 1), \\
+\tau &\sim& \textrm{Cauchy}(0, 1).
+\end{eqnarray}
+
+- After posterior inference:
+    - The posterior of $\mu$ is informative about an average mean rating.
+    - The posterior of $\tau$ is informative about the variation among the $\mu_j$'s.
+    
+## Prior for $\sigma$ and graphical representation
+
+- Weakly informative prior for $\sigma$:
+\begin{eqnarray}
+\sigma &\sim& \textrm{Cauchy}(0, 1).
+\end{eqnarray}
+
+```{r,  echo = FALSE, out.width = 200}
+knitr::include_graphics("treediagram.png")
+```
+
+# MCMC estimation and diagnostics
+
+## Fitting the model
+
+- Use the \texttt{brm()} function with \texttt{family = gaussian}.
+
+- Use \texttt{rating \~ 1 + 1 | Title} expression for model specification.
+
+```{r, size = "footnotesize", warning = FALSE, message = FALSE, results = 'hide'}
+library(brms)
+ml_fit <- brm(data = MovieRatings, family = gaussian,
+               rating ~ 1 + (1 | Title),
+               prior = c(prior(normal(3, 1), class = Intercept),
+                         prior(cauchy(0, 1), class = sd),
+                         prior(cauchy(0, 1), class = sigma)),
+               iter = 20000, warmup = 10000, thin = 10, chains = 2, 
+               seed = 1234)
+```
+
+## Saving posterior draws
+
+- Save \texttt{post} as a matrix of simulated posterior draws.
+
+- The model parameters: $\{\mu, \tau, \mu_1, \cdots, \mu_8, \sigma\}$
+
+```{r, size = "footnotesize", warning = FALSE, message = FALSE}
+post_ml <- posterior_samples(ml_fit)
+head(post_ml)
+```
+
+
+## Posterior plots
+
+- Function \texttt{mcmc\_areas()} displays a density estimate of the simulated posterior draws with a specified credible interval.
+
+```{r fig.height = 2, fig.width = 3, fig.align = "center", size = "footnotesize"}
+library(bayesplot)
+mcmc_areas(post_ml, 
+           pars = c("b_Intercept", "r_Title[Batman,Intercept]"), 
+           prob = 0.95)
+```
+
+## Posterior plots cont'd
+
+```{r fig.height = 2, fig.width = 4, fig.align = "center", size = "footnotesize", echo = FALSE}
+library(bayesplot)
+mcmc_areas(post_ml, 
+           pars = c("b_Intercept", 
+                    "r_Title[Batman,Intercept]", 
+                    "r_Title[Despicable.Me,Intercept]", 
+                    "r_Title[Dragon,Intercept]",
+                    "r_Title[Guardians,Intercept]",
+                    "r_Title[Megamind,Intercept]",
+                    "r_Title[Shrek.Forever,Intercept]",
+                    "r_Title[Tangled,Intercept]",
+                    "r_Title[Toy.Story.3,Intercept]"), 
+           prob = 0.95)
+```
+
+## Posterior plots cont'd
+
+- Within group variability $tau$ vs between group variability $\sigma$.
+
+```{r fig.height = 2, fig.width = 3, fig.align = "center", size = "footnotesize"}
+library(bayesplot)
+mcmc_areas(post_ml, 
+           pars = c("sd_Title__Intercept", "sigma"), 
+           prob = 0.95)
+```
+
+## MCMC diagnostics: overview
+
+- Theory proves that if a Gibbs sampler iterates enough, the draws will be from the joint posterior distribution (called the target or stationary distribution).
+    - Do initial values matter? Should they matter?
+    - Markov chain indicate dependence of draws. How to create independent parameter draws?
+    - How long do we need to run the MCMC to adequately explore the posterior distribution?
+    - How can we tell if the chain is not converging?
+
+## MCMC diagnostics: overview cont'd
+
+```{r, size = "footnotesize", warning = FALSE, message = FALSE, eval = FALSE}
+ml_fit <- brm(data = MovieRatings, family = gaussian,
+               rating ~ 1 + (1 | Title),
+               prior = c(prior(normal(3, 1), class = Intercept),
+                         prior(cauchy(0, 1), class = sd),
+                         prior(cauchy(0, 1), class = sigma)),
+               iter = 20000, warmup = 10000, thin = 10, chains = 2, 
+               seed = 1234)
+```
+
+- \texttt{iter}: total number of iterations.
+- \texttt{warmup}: the number of iterations to be discarded (beginning iterations are not converged).
+- \texttt{thin}: the number of draws to thin for saving.
+- \texttt{chains}: the number of MCMC chains (some diagnostics can only be done for more than one chain).
+    
+    
+## MCMC diagnostics: traceplot
+
+- Function \texttt{mcmc\_trace()} displays a traceplot of the simulated posterior draws for each chain.
+
+```{r fig.height = 2, fig.width = 3, fig.align = "center", size = "footnotesize"}
+mcmc_trace(ml_fit, pars = c("sd_Title__Intercept"))
+```
+
+## MCMC diagnostics: autocorrelation plot
+
+- Function \texttt{mcmc\_acf()} displays an autocorrelation plot of the simulated posterior draws.
+
+```{r fig.height = 2, fig.width = 3, fig.align = "center", size = "footnotesize"}
+mcmc_acf_bar(ml_fit, pars = c("sd_Title__Intercept"))
+```
+
+# Additional Bayesian inferential questions
+
+## Shrinkage / pooling effects
+
+```{r fig.height = 3, fig.width = 3, fig.align = "center", size = "footnotesize", echo = FALSE}
+J <- 8
+Post_Mus <- post_ml[, 1] + post_ml[, 4:11]
+Post_Means <- colMeans(Post_Mus)
+
+MovieRatings %>% group_by(Group_Number) %>%
+  summarize(Title = first(title),
+            N = n(), M = mean(rating),
+            SE = sd(rating) / sqrt(N)) -> Ind_Stats
+
+Means1 <- data.frame(Type = "Sample", Mean = Ind_Stats$M)
+Means2 <- data.frame(Type = "Posterior", Mean = Post_Means)
+Means1$Title <- c("Dragon", "Toy Story 3", "Shrek Forever",
+                  "Despicable Me", "Batman", "Guardians",
+                  "Megamind", "Tangled")
+Means2$Title <- c("Dragon", "Toy Story 3", "Shrek Forever",
+                  "Despicable Me", "Batman", "Guardians",
+                  "Megamind", "Tangled")
+df <- rbind(Means1, Means2)
+df$Type <- factor(df$Type, levels = c("Sample", "Posterior"))
+ggplot(df,
+       aes(Type, Mean, group=Title)) +
+  geom_line(color = crcblue) + geom_point() +
+  annotate(geom = "text",
+           x = 0.75,
+           y = Means1$Mean + c(0.05, 0, 0.05, 0,
+                               0, -0.05, 0, 0),
+           size = 2,
+           label = Means1$Title) +
+  increasefont(Size = 10) + 
+  theme_bw()
+```
+
+## Sources of variability
+
+- Two sources of variability in $Y_{ij}$:
+\begin{eqnarray*}
+Y_{ij} &\overset{i.i.d.}{\sim}& \textrm{Normal}(\mu, \sigma) \,\,\, \text{[within-group variability]} \\
+\mu_j &\sim& \textrm{Normal}(\mu, \tau) \,\,\, \text{[between-group variability]}
+\end{eqnarray*}
+
+- To compare these two sources of variability, one can compute the fraction
+\begin{equation*}
+R = \frac{\tau^2}{\tau^2 + \sigma^2}
+\end{equation*}
+from the posterior draws of $\tau$ and $\sigma$.
+
+- If $R \rightarrow 1$, the higher the between-group variability.
+
+## Sources of variability: results
+
+```{r fig.height = 2, fig.width = 3, fig.align = "center", size = "footnotesize"}
+tau_draws <- post_ml[,"sd_Title__Intercept"]
+sigma_draws <- post_ml[,"sigma"]
+R <- tau_draws^2/(tau_draws^2 + sigma_draws^2)
+quantile(R, c(0.025, 0.975))
+```
+
+
+```{r fig.height = 2, fig.width = 3, fig.align = "center", size = "footnotesize", echo = FALSE}
+df <- as.data.frame(R)
+ggplot(df, aes(x=R)) + 
+  geom_density() + 
+  labs(title="Density of R") + 
+  theme_bw()
+```
+
+## Wrap-up
+
+- Bayesian multilevel modeling:
+    - A two-stage prior; interpretation of parameters and hyperparameters.
+    - Using the \texttt{brms} package; prior choices.
+
+- Additional Bayesian inferences:
+    - Shrinkage / pooling effects.
+    - Sources of variability.
