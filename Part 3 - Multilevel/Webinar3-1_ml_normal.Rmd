@@ -319,9 +319,9 @@ Means2 <- data.frame(Type = "Posterior", Mean = Post_Means)
 Means1$Title <- c("Dragon", "Toy Story 3", "Shrek Forever",
                   "Despicable Me", "Batman", "Guardians",
                   "Megamind", "Tangled")
-Means2$Title <- c("Dragon", "Toy Story 3", "Shrek Forever",
-                  "Despicable Me", "Batman", "Guardians",
-                  "Megamind", "Tangled")
+Means2$Title <- c("Batman", "Despicable Me", "Dragon", "Guardians",
+                  "Megamind", "Shrek Forever",
+                   "Tangled", "Toy Story 3")
 df <- rbind(Means1, Means2)
 df$Type <- factor(df$Type, levels = c("Sample", "Posterior"))
 ggplot(df,
@@ -333,7 +333,7 @@ ggplot(df,
                                0, -0.05, 0, 0),
            size = 2,
            label = Means1$Title) +
-  increasefont(Size = 10) + 
+  increasefont(Size = 10) +
   theme_bw()
 ```
 
