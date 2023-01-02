@@ -1,0 +1,418 @@
+---
+title: 'Bayesian Thinking:  Fundamentals, Regression and Multilevel Modeling'
+author: "Jim Albert and Jingchen (Monika) Hu"
+date: "November 2020"
+output:
+  beamer_presentation:
+    theme: AnnArbor
+    colortheme: beaver
+    fonttheme: structurebold
+    includes:
+      in_header: header_pagenrs.tex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      message = FALSE, warning = FALSE)
+```
+
+## Regression Models for Count Data
+
+- Response variable $y$ is a count
+
+- Traditional sampling model is Poisson, where the log means satisfy a linear regression model
+
+- Data is typically overdispersed -- see more variability in counts than predicted by Poisson
+
+- We'll describe several ways to handle overdispersion
+
+## Famous Bayesian Study
+
+- Mosteller and Wallace (1963)
+
+- \textcolor{red}{Authorship problem}:  85 Federalist papers wrote to promote ratification of U.S. constitution
+
+- Some were written by Alexander Hamilton and some were written by James Madison
+
+- Who wrote the "unknown" Federalist papers -- Madison or  Hamilton?
+
+- Illustrated Bayesian reasoning to determine authorship
+
+## Focus on the "Filler Words"
+
+- Use of some words depend on the content of the essay
+
+- Other words, so-called filler words, are less influenced by the essay content
+
+- Focus on the use of the word "can" by Hamilton
+
+## Read Data
+
+```{r}
+library(tidyverse)
+library(ProbBayes)
+d <- filter(federalist_word_study,
+            Authorship == "Hamilton",
+            word == "can") %>% 
+     select(Name, Total, N)
+head(d)
+```
+
+## Poisson Model
+
+- Assume the number of occurrences of "can" in the $j$th document $y_j$ is Poisson with mean $n_j \lambda / 1000$.
+
+- $\lambda$ is true rate of "can" among 1000 words
+
+- Poisson sampling density
+
+$$
+f(y_j | \lambda) = \frac{(n_j \lambda / 1000)^{y_j} \exp(-n_j \lambda / 1000)}{y_j!}.
+$$
+
+## Log-Linear Model
+
+- On log scale, the Poisson mean can be written
+
+$$
+\log \lambda = \log(n_i / 1000) + \beta
+$$
+
+- A generalized linear model with Poisson sampling, log link, intercept model with an offset of $\log(n_i / 1000)$.
+
+## Prior
+
+- Assume know little about location of $\lambda$
+
+- We complete this model by assigning the prior 
+
+$$
+\log \lambda \sim N(0, 2)
+$$
+
+## Fitting Model
+
+- Use the ```brm()``` function with ```family = poisson```, specifying the offset ```N```, and specifying the prior by use of the "prior" argument.
+
+```{r}
+library(brms)
+fit <- brm(data = d, family = poisson,
+    N ~ offset(log(Total / 1000)) + 1,
+    prior = c(prior(normal(0, 2), 
+                    class = Intercept)),
+              refresh = 0
+    )
+```
+
+## Saving Posterior Draws
+
+- Save  ```post``` as a matrix of simulated draws.
+
+```{r}
+post <- posterior_samples(fit)
+```
+
+## Posterior Plot
+
+- Function ```mcmc_areas()``` displays a density estimate of the simulated draws and shows the location of a 90% probability interval.
+
+```{r, fig.width = 4, fig.height = 2}
+library(bayesplot)
+mcmc_areas(post, pars = "b_Intercept",
+           prob = 0.90)
+```
+
+
+
+## Model Checking
+
+- To check if the Poisson sampling model is appropriate we illustrate several posterior predictive (PP) checks.
+
+- Plot density estimates for 10 replicated samples from the PP distribution of $y$ and overlay the observed count distribution.
+
+```{r, fig.height = 2, fig.width = 4}
+pp_check(fit)
+```
+
+## Overdispersion?
+
+- Use $(\bar y, s_y)$ as a checking function.  The scatterplot represents values of $(\bar y, s_y)$ from the PP distribution of replicated data, and the dot is the observed value of $(\bar y, s_y)$.
+
+```{r, fig.height = 2, fig.width = 4}
+pp_check(fit, type = "stat_2d")
+```
+
+- The observed data shows more variability than predicted from the Poisson sampling model.
+
+## Consider Negative Binomial sampling
+
+- Assume $y_j$ is Negative Binomial (NB) with parameters $p_j$ and $\alpha$
+
+- Reparametrize $p_j$ to $\beta$
+
+$$
+p_j = \frac{\beta}{\beta + n_j / 1000}.
+$$
+
+$$
+f(y_j | \alpha, \beta) = \frac{\Gamma(y_j + \alpha)}{\Gamma(\alpha)} p_j^\alpha (1 - p_j)^{y_j}
+$$
+
+## NB is Generalization of Poisson
+
+- Mean of $y_j$ is
+$$
+E(y_j) = \mu_j =  \frac{n_j}{1000}\frac{\alpha}{\beta}
+$$
+
+- Variance of $y_j$ is
+
+$$
+Var(y_j) = \mu_j \left(1 + \frac{n_j}{1000 \beta}\right).
+$$
+
+- Parameter $\mu = \alpha / \beta$ is true rate per 1000 words
+
+- $\beta$ is overdispersion parameter
+
+## Negative Binomial Sampling
+
+- Fit the negative binomial model with the ```brm()``` function with the "family = negbinomial" option.
+
+```{r}
+fit_nb <- brm(data = d, family = negbinomial,
+           N ~ offset(log(Total / 1000)) + 1,
+           refresh = 0)
+```
+
+
+## Posterior Predictive Checks
+                 
+- Try the same posterior predictive checks as before.  The message is that the negative binomial sampling model is a better fit to these data.
+
+```{r, fig.height = 2, fig.width = 4}
+pp_check(fit_nb)
+```
+
+## Posterior Predictive Checks
+
+```{r, fig.height = 2, fig.width = 4}
+pp_check(fit_nb, type = "stat_2d")
+```
+
+
+## Compare Authors's Use of a Word
+
+- Compare Madison and Hamilton use of the word "can".  The data frame ```d2``` contains only the word data for the essays that were known to be written by Hamilton or Madison.
+
+```{r}
+federalist_word_study %>% 
+  filter(word == "can",
+         Authorship %in% c("Hamilton", "Madison")) -> d2
+```
+
+## Model - Two Author Comparison
+
+- Fit a regression model for the mean use of "can", where the one predictor is the categorical variable "Authorship".
+
+```{r}
+fit_nb <- brm(data = d2, family = negbinomial,
+           N ~ offset(log(Total / 1000)) + 
+          Authorship ,
+           refresh = 0)
+```
+
+## Comparing Authors
+
+- By summarizing the fit, we can see if the two authors differ in their use of the word "can" in their writings.
+
+```{r}
+summary(fit_nb)
+```
+## Takeaways
+
+- Hamilton more likely to use words "upon", "to", "this",
+"there", "any", and "an" 
+
+- Madison more likely to use "on",
+"by", and "also" 
+
+- Inconclusive for the remaining words (may, his, from, can, and also) 
+
+## Baseball Prediction Problem
+
+- In baseball, much of the run scoring is due to home runs.  
+
+- In the 2020 World Series, I am interested in predicting the total number of home runs hit.
+
+## Start with a Poisson Model
+
+- Let $y_{ij}$ be the number of home runs hit by the $i$th team in the $j$th game during the 2020 season.
+
+- Let $n_{ij}$ denote the number of opportunities (balls in play)
+
+- Assume $y_{ij} \sim Poisson(n_{ij} \lambda_{ij})$
+
+- Teams differ on their home run ability.
+
+- There is a clear effect of the ballpark.
+
+## Random Effects Model
+
+- Log-linear model
+$$
+\log \lambda_{ij} = \log n_{ij} + \beta_0 + Team_i + Park_j
+$$
+- Assume team effects $Team_1, ..., Team_{30}$ are $N(0, \sigma_T)$
+
+- Assume park effects $Park_1, ..., Park_{30}$ are $N(0, \sigma_P)$.
+
+- Assign prior to $(\beta_0, \sigma_T, \sigma_P)$.
+
+
+```{r, echo = FALSE}
+library(tidyverse)
+library(brms)
+```
+
+## Data
+
+- Available at http://bayesball.github.io/baseball/2020homeruns.csv
+
+- Contains number of home runs hit by each team for each game of 2020 season
+
+- Variables ```HR```, ```N``` (number of balls in play), ```BAT_TEAM```, ```venue_name```
+
+
+```{r}
+S2 <- read_csv("http://bayesball.github.io/baseball/2020homeruns.csv")
+```
+
+## Fit Model Using Stan
+
+```{r}
+bfit2 <- brm(HR ~ offset(log(N)) + 
+               (1 | BAT_TEAM) +
+               (1 | venue_name),
+            data = S2,
+            family = poisson,
+            refresh = 0)
+```
+
+## Priors?
+
+```{r}
+prior_summary(bfit2)
+```
+
+## Summary of posterior fit
+
+```{r}
+bfit2
+```
+
+## Collect posterior draws 
+
+```{r}
+draws <- data.frame(bfit2)
+head(draws)
+```
+
+## Model Fits
+
+Draws MCMC diagnostics for intercept and standard deviations
+
+```{r, fig.height = 2, fig.width = 4}
+ggplot(draws, aes(sd_BAT_TEAM__Intercept)) +
+  geom_histogram(color = "white",
+                 fill = "blue") +
+  increasefont()
+```
+
+## Predictive checks
+
+
+```{r, fig.height = 2, fig.width = 4}
+pp_check(bfit2, nsamples = 50)
+```
+
+## Prediction
+
+- Predict the number of home runs in the playoffs
+
+- Inputs are the two teams, the ballpark, and the number of balls in play for each team
+
+## Simulate from Posterior Predictive
+
+- First, simulate values of the random effects $Team_i$, $Team_j$, and $Park_j$ from the posterior distribution.
+
+- Using the balls-in-play, have simulated values of the rates $\lambda$
+
+- Simulate home run rates from the Poisson sampling distribution
+
+```{r, echo = FALSE}
+predict_hr <- function(draws,
+                       team1, team2, 
+                       field, BIP1, BIP2,
+                       obs_hr1, obs_hr2){
+   
+  label1 <- paste("r_BAT_TEAM.", team1, ".Intercept.",
+                sep="")
+  label2 <- paste("r_BAT_TEAM.", team2, ".Intercept.",
+                sep="")
+  label3 <- paste("r_venue_name.", field,
+                ".Intercept.", sep = "")
+  
+  # this does the simulated predictions
+  dr <- draws[, c(label1, label2, label3)]
+  lam1 <- exp(log(BIP1) + draws$b_Intercept + 
+              dr[, 1] + dr[, 3])
+  lam2 <- exp(log(BIP2) + draws$b_Intercept + 
+             dr[, 2] + dr[, 3])
+  N <- dim(draws)[1]
+  hr1 <- rpois(N, lam1)
+  hr2 <- rpois(N, lam2)
+  total_hr <- hr1 + hr2
+  total_observed <- obs_hr1 + obs_hr2
+  
+  df <- data.frame(HR = total_hr,
+                   Type = "Predicted")
+  df[df$HR == total_observed, "Type"] = "Observed"
+  
+  q <- quantile(total_hr, c(.05, .95))
+  
+  ggplot(df, aes(HR, fill = Type)) + 
+    geom_bar(width = 0.5) + 
+    ggtitle(paste(team1, " vs ", team2,
+          ": 90% Interval: (", 
+                q[1], ", ", q[2], ")", sep="")) +
+              centertitle() +
+    xlab("Total Home Runs") + increasefont() +
+    scale_fill_manual(values = 
+                c("black", "red"))
+}
+
+```
+
+## Illustrate with a best-of-five series
+
+```{r, fig.height = 2, fig.width = 4}
+predict_hr(draws,
+           "NYY", "TB", "Petco.Park", 120, 114, 
+           10, 11)  
+```
+
+## Summing Up
+
+- Although Poisson is the canonical distribution for count data, typically data is overdispersed.
+
+- One way of handling overdispersion is through another sampling model such as negative binomial.
+
+- Another way is to introduce random effects that can soak up the extra variability.
+
+- Illustrated both Bayesian inference and prediction.
+
+
+
+
+
