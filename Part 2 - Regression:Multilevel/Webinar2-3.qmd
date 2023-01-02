@@ -1,0 +1,481 @@
+---
+title: "Bayesian Thinking: Fundamentals, Regression and Multilevel Modeling"
+author: "Jim Albert and Monika Hu"
+date: January 2023
+format: 
+  beamer:
+    theme: AnnArbor
+    colortheme: beaver
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+## Webinar 2-3: Multilevel Regressions
+
+- Imagine that you have many regressions, divided by a grouping variable.
+
+- Can pool the data over the grouping variable.
+
+- Or can run separate regressions.
+
+- Both approaches are unsatisfactory.
+
+- A Bayesian multilevel model is a compromise solution.
+
+## Situational Effects in Sports
+
+- In baseball, one is generally interested in learning about player abilities and making predictions of future performance. 
+
+- Some types of performance are relatively obscure, specifically the performance of players in different situations.
+
+- We use multilevel models to explore one important situational effect -- a player's tendency to hit better in balls in play when he has an advantage in the count.
+
+## Plate Appearance, Count, and a Ball in Play
+
+- In baseball, in a "plate appearance" (PA), a pitcher throws the batter a series of pitches.
+
+- Each pitch is recorded as a "ball" or a "strike".
+
+- The "count" is the current number of balls and strikes in a PA -- for example "2-1" means the count is currently two balls and one strike.
+
+- The batter wants to put the ball "in play" (BIP) -- measure of the quality of the BIP is called wOBA.
+
+## Quality of the BIP Depends on the Count
+
+- This wOBA on balls in play varies by the count as shown in a graph on the next slide. 
+
+- The values cluster naturally into three groups.
+
+- **"AHEAD"** counts (2-0, 3-0, 3-1) have wOBA values between 0.42 and 0.48
+
+- **"BEHIND"** counts (0-1, 0-2, 1-2, 2-2) have wOBA values between 0.32 and 0.36
+
+- **"NEUTRAL"** counts (0-0, 1-0, 1-1, 2-1, 3-2) have wOBA values between 0.36 and 0.40.
+
+## Graph of wOBA on Balls in Play by Count
+
+
+```{r, echo=FALSE, out.width="85%"}
+knitr::include_graphics("countplot.png")
+```
+
+
+```{r, echo = FALSE}
+library(tidyverse)
+library(lme4)
+library(broom)
+library(CalledStrike)
+```
+
+
+```{r, echo = FALSE}
+statcast2020 <- read_csv("http://bayesball.github.io/baseball/statcast2020.csv")
+
+statcast2020 %>% 
+  mutate(count = paste(balls, "-", strikes, sep=""),
+         c_type = ifelse(count %in%
+            c("2-0", "3-0", "3-1"),
+            "ahead", ifelse(count %in% 
+            c("0-0", "1-0", "1-1", 
+              "2-1", "3-2"),
+          "neutral", "behind"))) -> sc2020_ip
+```
+
+
+```{r, echo = FALSE}
+sc2020_ip %>% 
+  group_by(batter) %>%
+  summarize(N = n(),
+            .groups = "drop") -> S
+```
+
+```{r, echo = FALSE}
+inner_join(sc2020_ip, S, by="batter") %>%
+  filter(N >= 100) -> sc_regular
+sc_regular$estimated_woba_using_speedangle <-
+  as.numeric(sc_regular$estimated_woba_using_speedangle)
+```
+
+
+```{r, echo = FALSE}
+sc_regular %>% 
+  group_by(player_name, c_type) %>%
+  summarize(N = n(),
+      M = mean(estimated_woba_using_speedangle, 
+               na.rm = TRUE),
+      .groups = "drop") -> S1
+inner_join(filter(S1, c_type == "ahead"),
+           filter(S1, c_type == "behind"),
+           by = "player_name") -> S2
+inner_join(S2,
+           filter(S1, c_type == "neutral"),
+           by = "player_name") -> S2
+```
+
+## Individual Count Effects?
+
+- Hitters' performance on balls in play depends on the count. 
+
+- Does this count advantage depends on the hitter?
+
+- For each player, I computed the mean wOBA in each of the behind and neutral count situations on balls in play. 
+
+- Plot the wOBA improvement (NEUTRAL minus BEHIND) against the average wOBA for these players. 
+
+## Comparing Neutral and Behind Counts
+
+```{r, echo = FALSE, fig.height = 3.0, fig.width = 4}
+ggplot(S2, aes((M + M.y) / 2,
+               (M - M.y))) +
+  geom_point() +
+  geom_hline(yintercept = 0, color="red")  +
+  xlab("wOBA") +
+  ylab("Improvement in Neutral wOBA") +
+  centertitle() +
+  increasefont()
+```
+
+## Comments
+
+- In each case, most of the points fall above the red line indicating that players tend to do better in the more advantageous count situation.
+
+-   But many points  fall below the red line in each plot -- many players actually hit poorer in the more advantageous situation. 
+
+-  Does one believe that some hitters are not able to take advantage of the more favorable count?
+
+## What to Do? (To Pool or Not to Pool?)
+
+- If we pool all of the hitting data together, there is a clear count effect. Collectively, batters hit better on balls in play when they are in favorable count situations.
+
+- We computed individual-level advantages in count for all players. Although we see some general effects, some hitters actually hit worse in more advantageous count situations. 
+
+- Can we really believe these individual-level results?  They may not correspond to real effects that reflect baseball talents.
+
+## Preview: Multilevel Modeling
+
+- Good illustration of multilevel modeling.
+
+- Interested in both a player's wOBA talent and also in his ability to take advantage of a particular count situation. 
+
+- Put this problem into a regression context and so the issue will be how to combine a collection of individual-level regression estimates. 
+
+## Compare Three Approaches
+
+-   **Pool the Data.** We can assume that all batters are the same with respect to their BABIP ability and their ability to take advantage of the favorable count situation. We fit a single regression model.
+
+-   **Individual Estimates.** On the other extreme, we can assume that batters differ with respect to their hitting ability and also their ability to take advantage of the count situation. Then we would fit separate regression models for the hitters.
+
+-   **Multilevel Model Estimates.** Last, we'll consider a so-called "varying intercepts, varying slopes" multilevel model which states that the individual regression parameters come from a common prior distribution with unknown parameters. 
+
+## A Simple Regression Model
+
+- Let $y$ denote the expected wOBA.
+
+- Define the effect to be 0.5 if the batter is in a neutral count and -0.5 if the batter is behind in the count.
+
+- Assume that $y$ is normal with mean $\mu$ and standard deviation $\sigma$ where the mean response is written as
+
+$$
+\mu  = \beta_0 + \beta_1 EFFECT
+$$ 
+
+- In this regression model $\beta_0 = (\mu_1 + \mu_2) / 2$ represents the overall expected wOBA and $\beta_1= \mu_1 - \mu_2$ represents the improvement (from BEHIND-in-the-count to NEUTRAL-count) in expected wOBA.
+
+
+```{r, echo = FALSE}
+sc_regular_2 <- filter(sc_regular,
+             c_type %in% c("neutral", "behind"))
+sc_regular_2 %>%
+  mutate(effect = ifelse(c_type == "neutral",
+                         0.5, -0.5)) -> sc_regular_2
+```
+
+## A Pooled Data Estimate
+
+- Fit a regression model to all of the balls in play for all players. 
+
+- Note that 0.387 is an average expected wOBA and hitters tend to hit 0.034 better when they are in a neutral count as opposed to behind in the count. 
+
+```{r}
+fit <- lm(estimated_woba_using_speedangle ~ effect,
+          data = sc_regular_2)
+fit$coef
+```
+
+## Graph pf Pooled Data Estimate
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 4}
+df <- data.frame(Type = c("Behind", "Neutral"),
+        Estimate = c(fit$coef[1] - fit$coef[2] / 2,
+                     fit$coef[1] + fit$coef[2] / 2))
+df$Group = "Pooled"
+ggplot(df, aes(Type, Estimate, group = Group)) +
+    geom_point() + geom_line() +
+  increasefont() + ylim(0.2, 0.6) + 
+  ggtitle("Pooled Regression Curve") +
+  centertitle() 
+```
+
+## Individual Estimates
+
+- We implement separate regression fits for all players, obtaining many sets of regression coefficients.
+
+```{r, echo = FALSE}
+regressions <- sc_regular_2 %>%
+  group_by(player_name) %>%
+  do(tidy(lm(estimated_woba_using_speedangle ~
+        effect, data=.)))
+spread(dplyr::select(regressions, player_name,
+              term, estimate),
+       term, estimate) -> Individual_est
+names(Individual_est) <- 
+  c("player_name", "beta0", "beta1")
+```
+
+## Graph of 50 Individual Fits
+
+
+```{r, echo = FALSE}
+shrink_plot <- function(estimates, n = 50){
+  estimates  %>%
+    mutate(Behind = beta0 - beta1 / 2,
+           Neutral = beta0 + beta1 / 2)  %>%
+    select(player_name, Neutral, Behind) -> d
+    set.seed(123)
+    d <- d[sample(nrow(d), n, replace = FALSE), ]
+    d %>% 
+    gather(Type, WOBA, -player_name) %>%
+    ggplot(aes(Type, WOBA, group = player_name)) +
+    geom_line() +
+    geom_point() 
+}
+```
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 4}
+shrink_plot(Individual_est) +
+  ggtitle("50 Individual Regression Curves") +
+  centertitle() +
+  increasefont() +
+  ylim(.2, .6)
+```
+
+## Comments on Individual Fits
+
+- Most regression curves are increasing from Behind to Neutral.
+
+- But some players display decreasing curves.
+
+- How to interpret?
+
+## A Multilevel Model - Sampling
+
+- $y_{ij}$ denotes the $j$th measurement of performance for the $i$th player
+
+- Assume 
+
+$$y_{ij} \sim N(\beta_{0j} + \beta_{1j} EFFECT_{ij}, \sigma)$$
+
+- Let $\beta_i = (\beta_{0j}, \beta_{1j})$ denote vector of regression coefficients for the $i$th player
+
+- Called a "varying intercepts, varying slopes" model
+
+## A Multilevel Model - Prior
+
+- Let $\beta_1, ..., \beta_k$ represent the coefficient vectors for the $k$ regular players. 
+
+- Assume that these (random) parameter vectors come from a common bivariate normal distribution with mean $\beta_0$ and variance-covariance matrix $\Sigma$:
+
+$$
+\Sigma = 
+\begin{bmatrix} 
+\sigma_0^2 & \rho \sigma_0 \sigma_1  \\
+\rho \sigma_0 \sigma_1 & \sigma_1^2 \\
+\end{bmatrix}
+$$
+
+- $\sigma_0$ represents the variation between the player intercepts , $\sigma_1$ represents the variation between the player effects, and $\rho$ is the correlation between the player abilities and their situational abilities. 
+
+## Two Ways to Fit this Model
+
+- In a full Bayesian model, we can place a weakly informative prior on all these unknown parameters to complete the multilevel model and fit using Stan.
+
+- Or one can do a quick fit of this "random effects" model by using the `lmer()` function in the `lme4` package. 
+
+- This quick fit finds point estimates of the unknown parameters at the 2nd stage of the multilevel prior. 
+
+## Quick lmer() Fit
+
+```{r}
+newfit <- lmer(estimated_woba_using_speedangle ~
+            effect + (1 + effect | player_name),
+              data = sc_regular_2)
+```
+
+## Output of lmer() Fit
+
+
+```{r}
+newfit
+```
+
+## Interpret
+
+- Overall, the mean wOBA value is 0.388 and the advantage of being in the neutral count is 0.033. 
+
+- Obtain estimates at the components of the variance-covariance matrix $\Sigma$. 
+
+- Estimate at the variation of intercepts is $\sigma_0$ = 0.0484 -- this indicates that players do different in overall BABIP talent and the spread of these talents is given by 0.0484. 
+
+- Estimate of variation of slopes is given by $\sigma_1$ = 0.021. This is a relatively small value which means that players have little variation in their ability to take advantage of the count situation. 
+
+## Performance
+
+- The `lmer()` fitting function provides estimates at the "random effects", that is, the regression intercepts and slopes for the individual players. 
+
+```{r, echo = FALSE}
+B <- coef(newfit)[[1]]
+names(B) <- c("beta0", "beta1")
+B$player_name <- row.names(B)
+row.names(B) <- NULL
+head(B)
+```
+
+## Graph of These Estimates
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 4}
+shrink_plot(B) +
+  ggtitle("50 Multilevel Regression Curves") +
+  centertitle() + increasefont() +
+  ylim(.2, .6)
+```
+
+## Interpretation
+
+- Note that all of these curves are increasing.
+
+- Although some players had decreasing individual regression curves, this fitted model corrects this and tells us that actually everyone has increasing curve talents.
+
+- But the size of the increase can differ between players.
+
+## Graph Comparing Individual and Multilevel Estimates
+
+```{r, echo = FALSE}
+Individual_est$Type = "Individual"
+B$Type = "Multilevel"
+```
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 5}
+ggplot(data = rbind(Individual_est, B),
+       aes(beta0, beta1, color = Type)) +
+  geom_point() +
+  increasefont() 
+```
+
+## Interpretation
+
+- Note that many of the individual slope estimates (the $\beta_1$) are negative but none of the multilevel slope estimates are negative. 
+
+- The individual slope estimates are shrunk or adjusted strongly towards an average slope value.
+
+- We see shrinkage both in the slopes and the intercepts, but the degree of shrinkage is smaller for the intercepts (the player wOBA abilities). 
+
+- Another interesting thing to see is that there is a positive correlation between the multilevel intercepts and slopes -- this means that better hitters tend to have larger count effects.
+
+## Fit the Full Bayesian Model
+
+- Prior? (Show the default ones that are used by the brms package.)
+
+- Focus on inference on second-stage standard deviations.
+
+- Short discussion of MCMC diagnostics.
+
+## Bayesian Fit
+
+```
+library(brms)
+bfit <- brm(estimated_woba_using_speedangle ~
+  effect + (1 + effect | player_name),
+        data = sc_regular_2)
+```
+
+- Relatively slow -- 17 minutes for this example
+
+- About 200 players (400+ parameters)
+
+## Prior
+
+```{r, echo=FALSE, out.width="85%"}
+knitr::include_graphics("priors.png")
+```
+
+## Some Basic MCMC Diagnostic Graphs
+
+- Trace plots of each parameter of interest (simulated value against iteration number)
+
+- Autocorrelation plots (autocorrelations against lag number)
+
+- Density estimates 
+
+## Summary MCMC Diagnostics
+
+- Rhat (potential scale reduction statistic): compares behavior of one chain with other randomly initialized chains -- if chains are at equilibrium, Rhat will be close to 1
+
+- ESS (effective sample size): estimate of the number of independent draws from the posterior distribution of the parameter of interest
+
+- Typically ESS is smaller than simulation sample size
+
+
+## Posterior Summaries
+
+```{r, echo=FALSE, out.width="85%"}
+knitr::include_graphics("summary.png")
+```
+
+## Trace and Density Estimates
+
+```
+post <- as_draws_df(bfit)
+library(bayesplot)
+mcmc_combo(post, pars = c("sd_player_name__Intercept",
+                          "sd_player_name__effect"))
+```
+
+## Trace and Density Estimates
+
+```{r, echo=FALSE, out.width="85%"}
+knitr::include_graphics("mcmc_plots.png")
+```
+
+## Autocorrelation Graphs
+
+```
+mcmc_acf(post,  pars = c("sd_player_name__Intercept",
+                        "sd_player_name__effect"))
+```
+
+```{r, echo=FALSE, out.width="85%"}
+knitr::include_graphics("acf.png")
+```
+
+## Takeaways
+
+- See better mixing of $\sigma_0$ than for $\sigma_1$
+
+- This demonstrated through the acf and trace plots, and the values of the ESS
+
+- Would suggest rerunning fit with a large simulation sample size
+
+## Wrapup
+
+-   Baseball folks are always fascinated with situational effects. 
+
+-   Also situational data is hard to understand since there is so much variability in these observed situational effects due to the small sample sizes. 
+
+- Multilevel model estimates adjust the individual estimates towards a common value and the degree of adjustment depends on the particular situation. 
+
+- Here the variation in individual count effects appears to be mainly luck-driven and the multilevel estimates shrink them heavily towards a constant value.
+
