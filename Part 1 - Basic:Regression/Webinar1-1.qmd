@@ -1,7 +1,7 @@
 ---
 title: "Bayesian Thinking: Fundamentals, Regression and Multilevel Modeling"
 author: "Jim Albert and Monika Hu"
-date: January 2023
+date: January 9, 2023
 format: 
   beamer:
     theme: AnnArbor
@@ -46,7 +46,7 @@ http://bitly.com/ProbBayes
 
 All of the webinar files (markdown, pdf, data files) can be found at
 
-https://github.com/bayesball/JSM2020
+https://github.com/bayesball/BayesShortCourse
 
 ## Any Questions?
 
@@ -276,9 +276,8 @@ quantile(ys, c(0.05, 0.95))
 
 -   Write a Stan script defining the Bayesian model.
 
-```{=html}
 <!-- -->
-```
+
     data {
       int<lower=0> N;              
       int<lower=0,upper=1> y[N];  
