@@ -1,7 +1,7 @@
 ---
 title: "Bayesian Thinking: Fundamentals, Regression and Multilevel Modeling"
 author: "Jim Albert and Monika Hu"
-date: January 2023
+date: 1/11/2023
 format: 
   beamer:
     theme: AnnArbor
