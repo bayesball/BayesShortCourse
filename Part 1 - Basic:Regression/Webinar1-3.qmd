@@ -376,7 +376,7 @@ head(pred_logExp_obs)
 
 ## Predictions cont'd
 
-- Now suppose we get to know two new CU with log\_TotalExp = 10, one is rural and the other is urban, and we want to predict its log\_TotalIncome.
+- Now suppose we get to know two new CU with log\_TotalIncome = 10, one is rural and the other is urban, and we want to predict its log\_TotalExp.
 
 - Can also use the \texttt{posterior\_predict()} function.
 
