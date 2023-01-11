@@ -472,7 +472,7 @@ library(bayesplot)
 mcmc_hist(draws, pars = 'mu')
 ```
 
-## Histogram of the simulated draws of $\Sigma$
+## Histogram of the simulated draws of $\sigma$
 
 ```{r, fig.height = 2, fig.width = 3, size = "footnotesize"}
 mcmc_hist(draws, pars = 'sigma')
