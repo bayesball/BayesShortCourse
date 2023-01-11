@@ -277,9 +277,9 @@ shrink_plot(Individual_est) +
 
 - Assume 
 
-$$y_{ij} \sim N(\beta_{0j} + \beta_{1j} EFFECT_{ij}, \sigma)$$
+$$y_{ij} \sim N(\beta_{0i} + \beta_{1i} EFFECT_{ij}, \sigma)$$
 
-- Let $\beta_i = (\beta_{0j}, \beta_{1j})$ denote vector of regression coefficients for the $i$th player
+- Let $\beta_i = (\beta_{0i}, \beta_{1i})$ denote vector of regression coefficients for the $i$th player
 
 - Called a "varying intercepts, varying slopes" model
 
